@@ -18,7 +18,7 @@ class GeminiClient:
             raise ValueError("GEMINI_API_KEY must be set in environment or passed to constructor")
         
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
     def call(
         self, 

@@ -261,4 +261,4 @@ Contributions are welcome! This is a demonstration project showcasing multi-agen
 
 ---
 
-Built with ❤️ using LangGraph, Gemini, FastAPI, and React
+Built with ❤️ using LangGraph, Gemini, FastAPI, and Reacrt ❤️.

@@ -34,21 +34,36 @@ def should_continue_to_executor(state: GraphState) -> str:
 def should_continue_to_publisher(state: GraphState) -> str:
     """Conditional edge: check if executor succeeded"""
     if state.get("error"):
+        print("⚠️ Skipping publisher: error detected")
         return "end"
     
     sub_questions = state.get("sub_questions", [])
     if not sub_questions:
+        print("⚠️ Skipping publisher: no sub_questions")
         return "end"
     
     # Check if at least some questions completed
-    completed = sum(1 for q in sub_questions if isinstance(q, dict) and q.get("status") == "completed")
+    # Handle both dict and SubQuestion objects
+    completed = 0
+    for q in sub_questions:
+        if isinstance(q, dict):
+            if q.get("status") == "completed":
+                completed += 1
+        elif hasattr(q, 'status'):
+            if q.status == "completed":
+                completed += 1
+    
+    print(f"📊 Publisher check: {completed}/{len(sub_questions)} questions completed")
+    
     if completed == 0:
+        print("⚠️ Skipping publisher: no completed questions")
         return "end"
     
+    print("✅ Proceeding to publisher")
     return "publisher"
 
 
-def create_research_graph() -> StateGraph:
+def create_research_graph():
     """
     Create and compile the LangGraph workflow.
     
@@ -131,33 +146,71 @@ async def run_research_workflow(task_state: TaskState, memory_store) -> TaskStat
         task_state.update_progress("Planning research questions...", 5)
         memory_store.update(task_state.task_id, task_state)
         
-        # Run the graph
-        final_state = await research_graph.ainvoke(initial_state)
+        # Run the graph with streaming to capture intermediate states
+        final_state = None
         
-        # Update task state from final graph state
-        if final_state.get("error"):
-            task_state.status = TaskStatus.FAILED
-            task_state.error = final_state["error"]
-            task_state.update_progress(f"Failed: {final_state['error']}", 0)
-        else:
-            # Update sub_questions
-            if final_state.get("sub_questions"):
+        # Use astream to get updates after each node completes
+        # astream yields the full state after each node execution
+        async for state_update in research_graph.astream(initial_state):
+            # state_update is the full accumulated state
+            print(f"📡 Graph state update received")
+            
+            # Update task state with the accumulated graph state
+            if state_update.get("status"):
+                # Map graph status to TaskStatus enum
+                status_map = {
+                    "planning": TaskStatus.PLANNING,
+                    "executing": TaskStatus.EXECUTING,
+                    "publishing": TaskStatus.PUBLISHING,
+                    "done": TaskStatus.DONE
+                }
+                task_state.status = status_map.get(
+                    state_update["status"],
+                    task_state.status
+                )
+            
+            # Update progress
+            if state_update.get("current_step") or state_update.get("progress_percentage") is not None:
+                task_state.update_progress(
+                    state_update.get("current_step", task_state.current_step),
+                    state_update.get("progress_percentage", task_state.progress_percentage)
+                )
+            
+            # Update sub_questions if available
+            if state_update.get("sub_questions"):
                 task_state.sub_questions = [
                     SubQuestion(**q) if isinstance(q, dict) else q
-                    for q in final_state["sub_questions"]
+                    for q in state_update["sub_questions"]
                 ]
             
-            # Update report
-            if final_state.get("report"):
-                report_data = final_state["report"]
+            # Update report if available
+            if state_update.get("report"):
+                report_data = state_update["report"]
                 task_state.report = Report(**report_data) if isinstance(report_data, dict) else report_data
                 task_state.status = TaskStatus.DONE
             
-            # Update progress
-            task_state.update_progress(
-                final_state.get("current_step", "Complete"),
-                final_state.get("progress_percentage", 100)
-            )
+            # Handle errors
+            if state_update.get("error"):
+                task_state.status = TaskStatus.FAILED
+                task_state.error = state_update["error"]
+            
+            # Persist to memory store after each state update
+            memory_store.update(task_state.task_id, task_state)
+            print(f"  └─ Memory store updated: {task_state.status.value}, {task_state.progress_percentage}%, sub_questions: {len(task_state.sub_questions)}")
+            
+            final_state = state_update
+        
+        # Final update after workflow completes
+        if final_state:
+            if final_state.get("error"):
+                task_state.status = TaskStatus.FAILED
+                task_state.error = final_state["error"]
+                task_state.update_progress(f"Failed: {final_state['error']}", 0)
+            elif task_state.status != TaskStatus.DONE:
+                # If we completed without errors but status isn't DONE, check if we have a report
+                if task_state.report:
+                    task_state.status = TaskStatus.DONE
+                    task_state.update_progress("Research complete!", 100)
         
         # Save final state
         memory_store.update(task_state.task_id, task_state)

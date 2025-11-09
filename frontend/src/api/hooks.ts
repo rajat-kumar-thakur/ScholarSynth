@@ -49,6 +49,13 @@ export const useReport = (taskId: string | null, enabled = true) => {
     () => scholarApi.getReport(taskId!),
     {
       enabled: enabled && !!taskId,
+      refetchInterval: (data) => {
+        // Poll every 1 second if not done
+        if (!data || (data.status !== 'done' && data.status !== 'failed')) {
+          return 1000;
+        }
+        return false;
+      },
       refetchOnWindowFocus: false,
     }
   );

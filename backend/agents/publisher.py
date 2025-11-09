@@ -109,7 +109,7 @@ async def publisher_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "report": report,
             "current_step": "Report generation complete",
             "progress_percentage": 100,
-            "status": "done"
+            "status": "publishing"  # Set to publishing, the graph handler will set to done
         }
         
     except Exception as e:

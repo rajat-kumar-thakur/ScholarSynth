@@ -13,9 +13,11 @@ export const QueryPage: React.FC = () => {
   
   const createReport = useCreateReport();
   const { data: status } = useReportStatus(currentTaskId, !!currentTaskId);
+  
+  // Fetch full report data while processing (includes sub_questions with details)
   const { data: report } = useReport(
     currentTaskId,
-    status?.status === 'done'
+    !!currentTaskId  // Enable fetching as soon as we have a task ID
   );
 
   const handleSubmit = async (e: React.FormEvent) => {

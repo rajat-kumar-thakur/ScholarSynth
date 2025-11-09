@@ -45,6 +45,7 @@ async def planner_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         return {
             "sub_questions": sub_questions,
+            "status": "planning",
             "current_step": f"Planning complete - {len(sub_questions)} research questions generated",
             "progress_percentage": 20
         }

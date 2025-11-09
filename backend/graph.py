@@ -150,13 +150,24 @@ async def run_research_workflow(task_state: TaskState, memory_store) -> TaskStat
         final_state = None
         
         # Use astream to get updates after each node completes
-        # astream yields the full state after each node execution
+        # astream yields updates in format: {node_name: node_output}
         async for state_update in research_graph.astream(initial_state):
-            # state_update is the full accumulated state
-            print(f"📡 Graph state update received")
+            # Extract the actual state data from the node output
+            # state_update format: {node_name: {...node_output...}}
+            print(f"📡 Graph state update received: {list(state_update.keys())}")
             
-            # Update task state with the accumulated graph state
-            if state_update.get("status"):
+            # Get the node output (the actual state data)
+            node_output = None
+            for node_name, output in state_update.items():
+                node_output = output
+                print(f"  └─ Processing node: {node_name}")
+                break
+            
+            if not node_output:
+                continue
+                
+            # Update task state with the node output
+            if node_output.get("status"):
                 # Map graph status to TaskStatus enum
                 status_map = {
                     "planning": TaskStatus.PLANNING,
@@ -165,40 +176,41 @@ async def run_research_workflow(task_state: TaskState, memory_store) -> TaskStat
                     "done": TaskStatus.DONE
                 }
                 task_state.status = status_map.get(
-                    state_update["status"],
+                    node_output["status"],
                     task_state.status
                 )
             
             # Update progress
-            if state_update.get("current_step") or state_update.get("progress_percentage") is not None:
+            if node_output.get("current_step") or node_output.get("progress_percentage") is not None:
                 task_state.update_progress(
-                    state_update.get("current_step", task_state.current_step),
-                    state_update.get("progress_percentage", task_state.progress_percentage)
+                    node_output.get("current_step", task_state.current_step),
+                    node_output.get("progress_percentage", task_state.progress_percentage)
                 )
             
             # Update sub_questions if available
-            if state_update.get("sub_questions"):
+            if node_output.get("sub_questions"):
                 task_state.sub_questions = [
                     SubQuestion(**q) if isinstance(q, dict) else q
-                    for q in state_update["sub_questions"]
+                    for q in node_output["sub_questions"]
                 ]
             
             # Update report if available
-            if state_update.get("report"):
-                report_data = state_update["report"]
+            if node_output.get("report"):
+                report_data = node_output["report"]
                 task_state.report = Report(**report_data) if isinstance(report_data, dict) else report_data
                 task_state.status = TaskStatus.DONE
+                task_state.update_progress("Research complete!", 100)
             
             # Handle errors
-            if state_update.get("error"):
+            if node_output.get("error"):
                 task_state.status = TaskStatus.FAILED
-                task_state.error = state_update["error"]
+                task_state.error = node_output["error"]
             
             # Persist to memory store after each state update
             memory_store.update(task_state.task_id, task_state)
             print(f"  └─ Memory store updated: {task_state.status.value}, {task_state.progress_percentage}%, sub_questions: {len(task_state.sub_questions)}")
             
-            final_state = state_update
+            final_state = node_output
         
         # Final update after workflow completes
         if final_state:

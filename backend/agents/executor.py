@@ -105,9 +105,9 @@ async def executor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         return {
             "sub_questions": completed_questions,
-            "status": "executing",  # This is the status for the overall workflow
+            "status": "executing",
             "current_step": f"Research complete - {successful}/{len(sub_questions)} questions answered",
-            "progress_percentage": 60
+            "progress_percentage": 70  # Increased from 60 to show progress
         }
         
     except Exception as e:

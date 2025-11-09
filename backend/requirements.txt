@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+langgraph
+langchain-core
+google-generativeai
+httpx
+sse-starlette
+python-multipart
